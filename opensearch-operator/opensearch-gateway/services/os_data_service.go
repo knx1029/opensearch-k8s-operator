@@ -155,7 +155,7 @@ func createClusterSettingsAllocationEnable(enable ClusterSettingsAllocation) res
 	}}
 }
 
-func CheckClusterStatusForRestart(service *OsClusterClient, drainNodes bool) (bool, string, error) {
+func CheckClusterStatusForRestart(service *OsClusterClient, drainNodes bool, dataNodeCount int32) (bool, string, error) {
 	health, err := service.GetHealth()
 	if err != nil {
 		return false, "failed to fetch health", err
@@ -165,7 +165,8 @@ func CheckClusterStatusForRestart(service *OsClusterClient, drainNodes bool) (bo
 		return true, "", nil
 	}
 
-	if continueRestartWithYellowHealth(health) {
+	// Single data pod can be restarted even if the cluster is yellow
+	if dataNodeCount == 1 || continueRestartWithYellowHealth(health) {
 		return true, "", nil
 	}
 
