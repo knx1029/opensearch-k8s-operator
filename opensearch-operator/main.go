@@ -57,6 +57,8 @@ func main() {
 	var probeAddr string
 	var watchNamespace string
 	var logLevel string
+	var maxConcurrentReconciles int
+    flag.IntVar(&maxConcurrentReconciles, "max-concurrent-reconciles", 16, "Max concurrent reconciles for OpenSearch controller.")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
@@ -108,6 +110,7 @@ func main() {
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
 		Recorder: mgr.GetEventRecorderFor("containerset-controller"),
+		MaxConcurrentReconciles: maxConcurrentReconciles,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "OpenSearchCluster")
 		os.Exit(1)
