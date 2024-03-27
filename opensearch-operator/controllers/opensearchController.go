@@ -149,7 +149,7 @@ func (r *OpenSearchClusterReconciler) Reconcile(ctx context.Context, req ctrl.Re
 // SetupWithManager sets up the controller with the Manager.
 func (r *OpenSearchClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-	    WithOptions(controller.Options{MaxConcurrentReconciles: 10}).
+	    WithOptions(controller.Options{MaxConcurrentReconciles: 2}).
 		For(&opsterv1.OpenSearchCluster{}).
 		Owns(&corev1.Pod{}).
 		Owns(&corev1.Secret{}).
