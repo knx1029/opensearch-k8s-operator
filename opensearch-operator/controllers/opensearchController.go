@@ -46,7 +46,6 @@ type OpenSearchClusterReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
-	logr.Logger
 }
 
 //+kubebuilder:rbac:groups="opensearch.opster.io",resources=events,verbs=create;patch
@@ -74,8 +73,8 @@ type OpenSearchClusterReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.8.3/pkg/reconcile
 func (r *OpenSearchClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	r.Logger = log.FromContext(ctx).WithValues("cluster", req.NamespacedName)
-	r.Logger.Info("Reconciling OpenSearchCluster")
+    const logger = log.FromContext(ctx).WithValues("cluster", req.NamespacedName)
+	logger.Info("Reconciling OpenSearchCluster")
 	myFinalizerName := "Opster"
 
     var instance *opsterv1.OpenSearchCluster
@@ -90,6 +89,10 @@ func (r *OpenSearchClusterReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		// error reading the object, requeue the request
 		return ctrl.Result{}, err
 	}
+	logger.Info(fmt.Sprintf("We will sleep for 2 mins for Cluster %s", req.NamespacedName))
+	time.Sleep(2 * time.Minute)
+	logger.Info(fmt.Sprintf("We are done sleeping for Cluster %s", req.NamespacedName))
+
 	/// ------ check if CRD has been deleted ------ ///
 	///	if ns deleted, delete the associated resources ///
 	if instance.ObjectMeta.DeletionTimestamp.IsZero() {
@@ -109,7 +112,7 @@ func (r *OpenSearchClusterReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	} else {
 		if helpers.ContainsString(instance.GetFinalizers(), myFinalizerName) {
 			// our finalizer is present, so lets handle any external dependency
-			if result, err := r.deleteExternalResources(ctx, instance); err != nil {
+			if result, err := r.deleteExternalResources(ctx, instance, &logger); err != nil {
 				// if fail to delete the external dependency here, return with error
 				// so that it can be retried
 				return result, err
@@ -149,7 +152,7 @@ func (r *OpenSearchClusterReconciler) Reconcile(ctx context.Context, req ctrl.Re
 // SetupWithManager sets up the controller with the Manager.
 func (r *OpenSearchClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-	    WithOptions(controller.Options{MaxConcurrentReconciles: 10}).
+	    WithOptions(controller.Options{MaxConcurrentReconciles: 2}).
 		For(&opsterv1.OpenSearchCluster{}).
 		Owns(&corev1.Pod{}).
 		Owns(&corev1.Secret{}).
@@ -161,8 +164,8 @@ func (r *OpenSearchClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 // delete associated cluster resources //
-func (r *OpenSearchClusterReconciler) deleteExternalResources(ctx context.Context, instance *opsterv1.OpenSearchCluster) (ctrl.Result, error) {
-	r.Logger.Info("Deleting resources")
+func (r *OpenSearchClusterReconciler) deleteExternalResources(ctx context.Context, instance *opsterv1.OpenSearchCluster, logger logr.Logger) (ctrl.Result, error) {
+	logger.Info("Deleting resources")
 	// Run through all sub controllers to delete existing objects
 	reconcilerContext := reconcilers.NewReconcilerContext(r.Recorder, instance, instance.Spec.NodePools)
 
@@ -214,12 +217,12 @@ func (r *OpenSearchClusterReconciler) deleteExternalResources(ctx context.Contex
 			return result, err
 		}
 	}
-	r.Logger.Info("Finished deleting resources")
+	logger.Info("Finished deleting resources")
 	return ctrl.Result{}, nil
 }
 
-func (r *OpenSearchClusterReconciler) reconcilePhasePending(ctx context.Context, instance *opsterv1.OpenSearchCluster) (ctrl.Result, error) {
-	r.Logger.Info("Start reconcile - Phase: PENDING")
+func (r *OpenSearchClusterReconciler) reconcilePhasePending(ctx context.Context, instance *opsterv1.OpenSearchCluster, logger logr.Logger) (ctrl.Result, error) {
+	logger.Info("Start reconcile - Phase: PENDING")
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		if err := r.Get(ctx, client.ObjectKeyFromObject(instance), instance); err != nil {
 			return err
