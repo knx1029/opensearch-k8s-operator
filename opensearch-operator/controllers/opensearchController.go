@@ -19,7 +19,6 @@ package controllers
 import (
 	"context"
 	"time"
-	"fmt"
 
 	"github.com/Opster/opensearch-k8s-operator/opensearch-operator/pkg/builders"
 	"github.com/Opster/opensearch-k8s-operator/opensearch-operator/pkg/helpers"
@@ -47,6 +46,7 @@ type OpenSearchClusterReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
+	MaxConcurrentReconciles int
 }
 
 //+kubebuilder:rbac:groups="opensearch.opster.io",resources=events,verbs=create;patch
@@ -90,9 +90,6 @@ func (r *OpenSearchClusterReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		// error reading the object, requeue the request
 		return ctrl.Result{}, err
 	}
-	logger.Info(fmt.Sprintf("We will sleep for 2 mins for Cluster %s", req.NamespacedName))
-	time.Sleep(2 * time.Minute)
-	logger.Info(fmt.Sprintf("We are done sleeping for Cluster %s", req.NamespacedName))
 
 	/// ------ check if CRD has been deleted ------ ///
 	///	if ns deleted, delete the associated resources ///
@@ -153,7 +150,7 @@ func (r *OpenSearchClusterReconciler) Reconcile(ctx context.Context, req ctrl.Re
 // SetupWithManager sets up the controller with the Manager.
 func (r *OpenSearchClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-	    WithOptions(controller.Options{MaxConcurrentReconciles: 2}).
+	    WithOptions(controller.Options{MaxConcurrentReconciles: r.MaxConcurrentReconciles}).
 		For(&opsterv1.OpenSearchCluster{}).
 		Owns(&corev1.Pod{}).
 		Owns(&corev1.Secret{}).

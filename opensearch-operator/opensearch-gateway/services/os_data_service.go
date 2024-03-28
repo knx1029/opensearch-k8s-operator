@@ -155,7 +155,7 @@ func createClusterSettingsAllocationEnable(enable ClusterSettingsAllocation) res
 	}}
 }
 
-func CheckClusterStatusForRestart(service *OsClusterClient, drainNodes bool) (bool, string, error) {
+func CheckClusterStatusForRestart(service *OsClusterClient, drainNodes bool, dataNodeCount int32) (bool, string, error) {
 	health, err := service.GetHealth()
 	if err != nil {
 		return false, "failed to fetch health", err
@@ -165,7 +165,8 @@ func CheckClusterStatusForRestart(service *OsClusterClient, drainNodes bool) (bo
 		return true, "", nil
 	}
 
-	if continueRestartWithYellowHealth(health) {
+    // Single data pod can be restarted even if the cluster is yellow
+	if dataNodeCount == 1 || continueRestartWithYellowHealth(health) {
 		return true, "", nil
 	}
 
@@ -268,26 +269,21 @@ func GetExistingSystemIndices(service *OsClusterClient) ([]string, error) {
 // continueRestartWithYellowHealth allows upgrades and rolling restarts to continue when the cluster is yellow
 // if the yellow status is caused by the .opensearch-observability index.  This is a new index that is created
 // on upgrade and will be yellow until at least 2 data nodes are upgraded.
-// TODO(sergeitsar): modify the following function to support clusters whith replicas=0
-// by returning true on yellow indexes even if its not the .opensearch-observability index
 func continueRestartWithYellowHealth(health responses.ClusterHealthResponse) bool {
 	if health.Status != "yellow" {
 		return false
 	}
 
-	//if health.RelocatingShards > 0 || health.InitializingShards > 0 || health.UnassignedShards > 1 {
-	if health.RelocatingShards > 0 || health.InitializingShards > 0 {
+	if health.RelocatingShards > 0 || health.InitializingShards > 0 || health.UnassignedShards > 1 {
 		return false
 	}
 
-	//observabilityIndex, ok := health.Indices[".opensearch-observability"]
-	_, ok := health.Indices[".opensearch-observability"]
+	observabilityIndex, ok := health.Indices[".opensearch-observability"]
 	if !ok {
 		return false
 	}
 
-	//return observabilityIndex.Status == "yellow"
-	return true
+	return observabilityIndex.Status == "yellow"
 }
 
 // IndexTemplatePath returns a strings.Builder pointing to /_index_template/<templateName>
