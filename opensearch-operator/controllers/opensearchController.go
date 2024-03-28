@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"time"
+	"fmt"
 
 	"github.com/Opster/opensearch-k8s-operator/opensearch-operator/pkg/builders"
 	"github.com/Opster/opensearch-k8s-operator/opensearch-operator/pkg/helpers"
@@ -73,7 +74,7 @@ type OpenSearchClusterReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.8.3/pkg/reconcile
 func (r *OpenSearchClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-    const logger = log.FromContext(ctx).WithValues("cluster", req.NamespacedName)
+    var logger = log.FromContext(ctx).WithValues("cluster", req.NamespacedName)
 	logger.Info("Reconciling OpenSearchCluster")
 	myFinalizerName := "Opster"
 
@@ -112,7 +113,7 @@ func (r *OpenSearchClusterReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	} else {
 		if helpers.ContainsString(instance.GetFinalizers(), myFinalizerName) {
 			// our finalizer is present, so lets handle any external dependency
-			if result, err := r.deleteExternalResources(ctx, instance, &logger); err != nil {
+			if result, err := r.deleteExternalResources(ctx, instance, logger); err != nil {
 				// if fail to delete the external dependency here, return with error
 				// so that it can be retried
 				return result, err
@@ -140,9 +141,9 @@ func (r *OpenSearchClusterReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	switch instance.Status.Phase {
 	case opsterv1.PhasePending:
-		return r.reconcilePhasePending(ctx, instance)
+		return r.reconcilePhasePending(ctx, instance, logger)
 	case opsterv1.PhaseRunning:
-		return r.reconcilePhaseRunning(ctx, instance)
+		return r.reconcilePhaseRunning(ctx, instance, logger)
 	default:
 		// NOTHING WILL HAPPEN - DEFAULT
 		return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, nil
@@ -237,7 +238,7 @@ func (r *OpenSearchClusterReconciler) reconcilePhasePending(ctx context.Context,
 	return ctrl.Result{Requeue: true}, nil
 }
 
-func (r *OpenSearchClusterReconciler) reconcilePhaseRunning(ctx context.Context, instance *opsterv1.OpenSearchCluster) (ctrl.Result, error) {
+func (r *OpenSearchClusterReconciler) reconcilePhaseRunning(ctx context.Context, instance *opsterv1.OpenSearchCluster, logger logr.Logger) (ctrl.Result, error) {
 	// Update initialized status first
 	if !instance.Status.Initialized {
 		if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {

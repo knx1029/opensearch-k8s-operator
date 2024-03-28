@@ -280,7 +280,8 @@ func continueRestartWithYellowHealth(health responses.ClusterHealthResponse) boo
 		return false
 	}
 
-	observabilityIndex, ok := health.Indices[".opensearch-observability"]
+	//observabilityIndex, ok := health.Indices[".opensearch-observability"]
+	_, ok := health.Indices[".opensearch-observability"]
 	if !ok {
 		return false
 	}
