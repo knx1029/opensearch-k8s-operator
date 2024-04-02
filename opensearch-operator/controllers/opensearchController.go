@@ -146,11 +146,7 @@ func (r *OpenSearchClusterReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	/// if crd not deleted started phase 1
 	if instance.Status.Phase == "" {
-	    // instance.Status.Phase = opsterv1.PhasePending
-	    // reconcilePhasePending does not do anything meaningful, other than setting the phase to Running
-	    // so we can skip it and go directly to Running
-        instance.Status.Phase = opsterv1.PhaseRunning
-		instance.Status.ComponentsStatus = make([]opsterv1.ComponentStatus, 0)
+		instance.Status.Phase = opsterv1.PhasePending
 	}
 
 	switch instance.Status.Phase {
