@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"hash/fnv"
 	"time"
 
 	"github.com/Opster/opensearch-k8s-operator/opensearch-operator/pkg/builders"
@@ -25,6 +26,7 @@ import (
 	"github.com/Opster/opensearch-k8s-operator/opensearch-operator/pkg/reconcilers"
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/errors"
+	k8stypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 
@@ -47,6 +49,16 @@ type OpenSearchClusterReconciler struct {
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
 	MaxConcurrentReconciles int
+	// We will only perform RollingRestart the given percentage of OpenSearchClusters
+	RollingRestartPercentage int
+}
+
+// Return whether we should perform a rolling restart on the given OpenSearchCluster
+func (r *OpenSearchClusterReconciler) ShouldRollingRestart(namespacedName k8stypes.NamespacedName) (bool) {
+	h := fnv.New32a()
+	h.Write([]byte(namespacedName.String()))
+	hash := (int) (h.Sum32() % 100)
+	return hash < r.RollingRestartPercentage
 }
 
 //+kubebuilder:rbac:groups="opensearch.opster.io",resources=events,verbs=create;patch
@@ -75,6 +87,7 @@ type OpenSearchClusterReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.8.3/pkg/reconcile
 func (r *OpenSearchClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
     var logger = log.FromContext(ctx).WithValues("cluster", req.NamespacedName)
+    var shouldRollingRestart = r.ShouldRollingRestart(req.NamespacedName)
 	logger.Info("Reconciling OpenSearchCluster")
 	myFinalizerName := "Opster"
 
@@ -110,7 +123,7 @@ func (r *OpenSearchClusterReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	} else {
 		if helpers.ContainsString(instance.GetFinalizers(), myFinalizerName) {
 			// our finalizer is present, so lets handle any external dependency
-			if result, err := r.deleteExternalResources(ctx, instance, logger); err != nil {
+			if result, err := r.deleteExternalResources(ctx, instance, logger, shouldRollingRestart); err != nil {
 				// if fail to delete the external dependency here, return with error
 				// so that it can be retried
 				return result, err
@@ -142,9 +155,9 @@ func (r *OpenSearchClusterReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	switch instance.Status.Phase {
 	case opsterv1.PhasePending:
-		return r.reconcilePhasePending(ctx, instance, logger)
+		return r.reconcilePhasePending(ctx, instance, logger, shouldRollingRestart)
 	case opsterv1.PhaseRunning:
-		return r.reconcilePhaseRunning(ctx, instance, logger)
+		return r.reconcilePhaseRunning(ctx, instance, logger, shouldRollingRestart)
 	default:
 		// NOTHING WILL HAPPEN - DEFAULT
 		return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, nil
@@ -166,7 +179,7 @@ func (r *OpenSearchClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 // delete associated cluster resources //
-func (r *OpenSearchClusterReconciler) deleteExternalResources(ctx context.Context, instance *opsterv1.OpenSearchCluster, logger logr.Logger) (ctrl.Result, error) {
+func (r *OpenSearchClusterReconciler) deleteExternalResources(ctx context.Context, instance *opsterv1.OpenSearchCluster, logger logr.Logger, shouldRollingRestart bool) (ctrl.Result, error) {
 	logger.Info("Deleting resources")
 	// Run through all sub controllers to delete existing objects
 	reconcilerContext := reconcilers.NewReconcilerContext(r.Recorder, instance, instance.Spec.NodePools)
@@ -223,7 +236,7 @@ func (r *OpenSearchClusterReconciler) deleteExternalResources(ctx context.Contex
 	return ctrl.Result{}, nil
 }
 
-func (r *OpenSearchClusterReconciler) reconcilePhasePending(ctx context.Context, instance *opsterv1.OpenSearchCluster, logger logr.Logger) (ctrl.Result, error) {
+func (r *OpenSearchClusterReconciler) reconcilePhasePending(ctx context.Context, instance *opsterv1.OpenSearchCluster, logger logr.Logger, shouldRollingRestart bool) (ctrl.Result, error) {
 	logger.Info("Start reconcile - Phase: PENDING")
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		if err := r.Get(ctx, client.ObjectKeyFromObject(instance), instance); err != nil {
@@ -239,7 +252,7 @@ func (r *OpenSearchClusterReconciler) reconcilePhasePending(ctx context.Context,
 	return ctrl.Result{Requeue: true}, nil
 }
 
-func (r *OpenSearchClusterReconciler) reconcilePhaseRunning(ctx context.Context, instance *opsterv1.OpenSearchCluster, logger logr.Logger) (ctrl.Result, error) {
+func (r *OpenSearchClusterReconciler) reconcilePhaseRunning(ctx context.Context, instance *opsterv1.OpenSearchCluster, logger logr.Logger, shouldRollingRestart bool) (ctrl.Result, error) {
 	// Update initialized status first
 	if !instance.Status.Initialized {
 		if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -310,6 +323,7 @@ func (r *OpenSearchClusterReconciler) reconcilePhaseRunning(ctx context.Context,
 		r.Recorder,
 		&reconcilerContext,
 		instance,
+		shouldRollingRestart,
 	)
 
 	componentReconcilers := []reconcilers.ComponentReconciler{

@@ -28,6 +28,8 @@ const (
 	componentName    = "Restarter"
 )
 
+// We explicitly include @shouldRollingRestart so that we can catch
+// all places that we construct RollingRestartReconciler to respect this flag
 type RollingRestartReconciler struct {
 	client            k8s.K8sClient
 	ctx               context.Context
@@ -35,6 +37,7 @@ type RollingRestartReconciler struct {
 	recorder          record.EventRecorder
 	reconcilerContext *ReconcilerContext
 	instance          *opsterv1.OpenSearchCluster
+	shouldRollingRestart bool
 }
 
 func NewRollingRestartReconciler(
@@ -43,6 +46,7 @@ func NewRollingRestartReconciler(
 	recorder record.EventRecorder,
 	reconcilerContext *ReconcilerContext,
 	instance *opsterv1.OpenSearchCluster,
+	shouldRollingRestart bool,
 	opts ...reconciler.ResourceReconcilerOption,
 ) *RollingRestartReconciler {
 	return &RollingRestartReconciler{
@@ -51,11 +55,16 @@ func NewRollingRestartReconciler(
 		recorder:          recorder,
 		reconcilerContext: reconcilerContext,
 		instance:          instance,
+		shouldRollingRestart: shouldRollingRestart,
 	}
 }
 
 func (r *RollingRestartReconciler) Reconcile() (ctrl.Result, error) {
 	lg := log.FromContext(r.ctx).WithValues("reconciler", "restart")
+	if (!r.shouldRollingRestart) {
+	  lg.V(1).Info("shouldRollingRestart is false, skipping rolling restart")
+	  return ctrl.Result{}, nil
+	}
 
 	// We should never get to this while an upgrade is in progress
 	// but put a defensive check in
