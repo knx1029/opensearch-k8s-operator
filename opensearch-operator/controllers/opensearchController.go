@@ -51,6 +51,8 @@ type OpenSearchClusterReconciler struct {
 	MaxConcurrentReconciles int
 	// We will only perform RollingRestart the given percentage of OpenSearchClusters
 	RollingRestartPercentage int
+	// Wait time after the security admin configuration is applied. See usage in SecurityconfigReconciler
+	SecurityAdminWaitSeconds int
 }
 
 // Return whether we should perform a rolling restart on the given OpenSearchCluster
@@ -192,6 +194,7 @@ func (r *OpenSearchClusterReconciler) deleteExternalResources(ctx context.Contex
 		r.Recorder,
 		&reconcilerContext,
 		instance,
+		r.SecurityAdminWaitSeconds,
 	)
 	config := reconcilers.NewConfigurationReconciler(
 		r.Client,
@@ -277,6 +280,7 @@ func (r *OpenSearchClusterReconciler) reconcilePhaseRunning(ctx context.Context,
 		r.Recorder,
 		&reconcilerContext,
 		instance,
+		r.SecurityAdminWaitSeconds,
 	)
 	config := reconcilers.NewConfigurationReconciler(
 		r.Client,
