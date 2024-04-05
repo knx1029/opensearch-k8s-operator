@@ -178,12 +178,14 @@ func (r *RollingRestartReconciler) Reconcile() (ctrl.Result, error) {
 func (r *RollingRestartReconciler) restartStatefulSetPod(sts *appsv1.StatefulSet) (ctrl.Result, error) {
 	lg := log.FromContext(r.ctx).WithValues("reconciler", "restart")
 	dataCount := util.DataNodesCount(r.client, r.instance)
-	if dataCount == 2 && r.instance.Spec.General.DrainDataNodes {
-		lg.Info("Only 2 data nodes and drain is set, some shards may not drain")
+	// We only drain data nodes if there are more than 2 data nodes
+	shouldDrainDataNodes := dataCount > 2 && r.instance.Spec.General.DrainDataNodes
+	if dataCount <= 2 && r.instance.Spec.General.DrainDataNodes {
+		lg.Info(fmt.Sprintf("Only %v data nodes and drain is set, some shards may not drain", dataCount))
 	}
 
 
-	ready, message, err := services.CheckClusterStatusForRestart(r.osClient, r.instance.Spec.General.DrainDataNodes, dataCount)
+	ready, message, err := services.CheckClusterStatusForRestart(r.osClient, shouldDrainDataNodes, dataCount)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -201,7 +203,7 @@ func (r *RollingRestartReconciler) restartStatefulSetPod(sts *appsv1.StatefulSet
 	}
 
 	lg.Info(fmt.Sprintf("Preparing to restart pod %s", workingPod))
-	ready, err = services.PreparePodForDelete(r.osClient, lg, workingPod, r.instance.Spec.General.DrainDataNodes, dataCount)
+	ready, err = services.PreparePodForDelete(r.osClient, lg, workingPod, shouldDrainDataNodes, dataCount)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -223,7 +225,7 @@ func (r *RollingRestartReconciler) restartStatefulSetPod(sts *appsv1.StatefulSet
 	}
 
 	// If we are draining nodes remove the exclusion after the pod is deleted
-	if r.instance.Spec.General.DrainDataNodes {
+	if shouldDrainDataNodes {
 		_, err = services.RemoveExcludeNodeHost(r.osClient, workingPod)
 		return ctrl.Result{}, err
 	}
