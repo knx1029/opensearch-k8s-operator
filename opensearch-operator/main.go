@@ -37,6 +37,10 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+
+	// Support pprof profiling
+	"net/http"
+	_ "net/http/pprof"
 )
 
 var (
@@ -60,9 +64,11 @@ func main() {
 	var maxConcurrentReconciles int
 	var rollingRestartPercentage int
 	var securityAdminWaitSeconds int
+	var enablePprof bool
 	flag.IntVar(&securityAdminWaitSeconds, "security-admin-wait-seconds", 120, "Wait time after the security admin configuration is applied.")
 	flag.IntVar(&maxConcurrentReconciles, "max-concurrent-reconciles", 16, "Max concurrent reconciles for OpenSearch controller.")
 	flag.IntVar(&rollingRestartPercentage, "rolling-restart-percentage", 100, "The percentage of OpenSearchClusters that OpenSearch controller will perform RollingRestart. This is used to rollout new OpenSearch operator gradually.")
+	flag.BoolVar(&enablePprof, "pprof", false, "Enable Pprof profiling. The profiling result is available at localhost:6060/debug/pprof/heap")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
@@ -95,6 +101,12 @@ func main() {
 	}
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	if enablePprof {
+		go func() {
+			fmt.Println(http.ListenAndServe("localhost:6060", nil))
+		}()
+	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
