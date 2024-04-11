@@ -20,6 +20,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	osruntime "runtime"
+	"time"
 	"strconv"
 
 	"github.com/Opster/opensearch-k8s-operator/opensearch-operator/controllers"
@@ -53,6 +55,35 @@ func init() {
 	utilruntime.Must(opsterv1.AddToScheme(scheme))
 	utilruntime.Must(monitoring.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
+}
+
+func bToMb(b uint64) uint64 {
+    return b / 1024 / 1024
+}
+
+// PrintMemUsage outputs the current, total and OS memory being used. As well as the number
+// of garage collection cycles completed.
+func PrintMemUsage(interval time.Duration) {
+    ticker := time.NewTicker(interval)
+    defer ticker.Stop()
+    for range ticker.C {
+        var m osruntime.MemStats
+        osruntime.ReadMemStats(&m)
+        // For info on each, see: https://golang.org/pkg/runtime/#MemStats
+        fmt.Printf("Alloc = %v MiB", bToMb(m.Alloc))
+        fmt.Printf("\tTotalAlloc = %v MiB", bToMb(m.TotalAlloc))
+        fmt.Printf("\tSys = %v MiB", bToMb(m.Sys))
+        fmt.Printf("\tMallocs = %v MiB", bToMb(m.Mallocs))
+        fmt.Printf("\tFrees = %v MiB", bToMb(m.Frees))
+        fmt.Printf("\tHeapAlloc = %v MiB", bToMb(m.HeapAlloc))
+        fmt.Printf("\tHeapSys = %v MiB", bToMb(m.HeapSys))
+        fmt.Printf("\tHeapIdle = %v MiB", bToMb(m.HeapIdle))
+        fmt.Printf("\tHeapInuse = %v MiB", bToMb(m.HeapInuse))
+        fmt.Printf("\tHeapReleased = %v MiB", bToMb(m.HeapReleased))
+        fmt.Printf("\tStackInuse: %v MiB", bToMb(m.StackInuse))
+        fmt.Printf("\tStackSys: %v MiB", bToMb(m.StackSys))
+        fmt.Printf("\tNumGC = %v\n", m.NumGC)
+    }
 }
 
 func main() {
@@ -107,6 +138,8 @@ func main() {
 			fmt.Println(http.ListenAndServe("localhost:6060", nil))
 		}()
 	}
+
+	go PrintMemUsage(1 * time.Minute)
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
