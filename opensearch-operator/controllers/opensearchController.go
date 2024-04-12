@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"hash/fnv"
+	"sync"
 	"time"
 
 	"github.com/Opster/opensearch-k8s-operator/opensearch-operator/pkg/builders"
@@ -53,6 +54,7 @@ type OpenSearchClusterReconciler struct {
 	RollingRestartPercentage int
 	// Wait time after the security admin configuration is applied. See usage in SecurityconfigReconciler
 	SecurityAdminWaitSeconds int
+	InstanceMap sync.Map
 }
 
 // Return whether we should perform a rolling restart on the given OpenSearchCluster
@@ -94,7 +96,15 @@ func (r *OpenSearchClusterReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	myFinalizerName := "Opster"
 
 	var instance *opsterv1.OpenSearchCluster
-	instance = &opsterv1.OpenSearchCluster{}
+	//var found bool
+	result, found := r.InstanceMap.Load(req.NamespacedName)
+	if (!found) {
+		instance = &opsterv1.OpenSearchCluster{}
+		r.InstanceMap.Store(req.NamespacedName, instance)
+	} else {
+		instance = result.(*opsterv1.OpenSearchCluster)
+	}
+
 	err := r.Get(ctx, req.NamespacedName, instance)
 	if err != nil {
 		if errors.IsNotFound(err) {
