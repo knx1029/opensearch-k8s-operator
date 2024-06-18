@@ -53,6 +53,8 @@ type OpenSearchClusterReconciler struct {
 	RollingRestartPercentage int
 	// Wait time after the security admin configuration is applied. See usage in SecurityconfigReconciler
 	SecurityAdminWaitSeconds int
+	// Clusters with more than this number of nodes will enforce TLS 1.2 only
+	MinClusterSizeToEnforceTLS12Only int
 }
 
 // Return whether we should perform a rolling restart on the given OpenSearchCluster
@@ -61,6 +63,14 @@ func (r *OpenSearchClusterReconciler) ShouldRollingRestart(namespacedName k8styp
 	h.Write([]byte(namespacedName.String()))
 	hash := (int) (h.Sum32() % 100)
 	return hash < r.RollingRestartPercentage
+}
+
+func (r *OpenSearchClusterReconciler) ShouldEnforceTLS12(nodepools []opsterv1.NodePool) (bool) {
+    numNodes := 0
+    for _, np := range nodepools {
+      numNodes += (int) (np.Replicas)
+    }
+    return numNodes >= r.MinClusterSizeToEnforceTLS12Only
 }
 
 //+kubebuilder:rbac:groups="opensearch.opster.io",resources=events,verbs=create;patch
@@ -180,7 +190,7 @@ func (r *OpenSearchClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 func (r *OpenSearchClusterReconciler) deleteExternalResources(ctx context.Context, instance *opsterv1.OpenSearchCluster, logger logr.Logger, shouldRollingRestart bool) (ctrl.Result, error) {
 	logger.Info("Deleting resources")
 	// Run through all sub controllers to delete existing objects
-	reconcilerContext := reconcilers.NewReconcilerContext(r.Recorder, instance, instance.Spec.NodePools)
+	reconcilerContext := reconcilers.NewReconcilerContext(r.Recorder, instance, instance.Spec.NodePools, r.ShouldEnforceTLS12(instance.Spec.NodePools))
 
 	tls := reconcilers.NewTLSReconciler(
 		r.Client,
@@ -266,7 +276,7 @@ func (r *OpenSearchClusterReconciler) reconcilePhaseRunning(ctx context.Context,
 	}
 
 	// Run through all sub controllers to create or update all needed objects
-	reconcilerContext := reconcilers.NewReconcilerContext(r.Recorder, instance, instance.Spec.NodePools)
+	reconcilerContext := reconcilers.NewReconcilerContext(r.Recorder, instance, instance.Spec.NodePools, r.ShouldEnforceTLS12(instance.Spec.NodePools))
 
 	tls := reconcilers.NewTLSReconciler(
 		r.Client,
