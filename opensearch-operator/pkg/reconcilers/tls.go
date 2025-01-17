@@ -187,8 +187,12 @@ func (r *TLSReconciler) shouldCreateAdminCert(ca tls.Cert) (bool, error) {
 	if !ok {
 		return true, nil
 	}
+	// empty data means force cert rotation
+	if (len(data) == 1 && data[0] == '\n') {
+		return true, nil
+	}
 
-	validator, err := tls.NewCertValidater(data, tls.WithExpiryThreshold(5*24*time.Hour))
+	validator, err := tls.NewCertValidater(data, tls.WithExpiryThreshold(30*24*time.Hour))
 	if err != nil {
 		return false, err
 	}
@@ -340,7 +344,7 @@ func (r *TLSReconciler) handleTransportGeneratePerNode() error {
 	_, bootstrapCertExists := nodeSecret.Data[fmt.Sprintf("%s.crt", bootstrapPodName)]
 	_, bootstrapKeyExists := nodeSecret.Data[fmt.Sprintf("%s.key", bootstrapPodName)]
 
-	if !r.instance.Status.Initialized && !(bootstrapCertExists && bootstrapKeyExists) {
+	if !(bootstrapCertExists && bootstrapKeyExists) {
 		dnsNames := []string{
 			bootstrapPodName,
 			clusterName,
@@ -487,8 +491,23 @@ func (r *TLSReconciler) handleHttp() error {
 		}
 
 		// Generate node cert, sign it and put it into secret
+		var shouldCreate bool = false
 		nodeSecret, err := r.client.GetSecret(nodeSecretName, namespace)
 		if err != nil {
+			shouldCreate = true
+		}
+		if !shouldCreate {
+			data, ok := nodeSecret.Data[corev1.TLSCertKey]
+			if !ok {
+			    shouldCreate = true
+			}
+			// empty data means force cert rotation
+			if (len(data) == 1 && data[0] == '\n') {
+			    shouldCreate = true
+			}
+		}
+
+		if (shouldCreate) {
 			// Generate node cert and put it into secret
 			dnsNames := []string{
 				clusterName,

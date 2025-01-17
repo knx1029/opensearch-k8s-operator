@@ -59,10 +59,13 @@ func (r *ConfigurationReconciler) Reconcile() (ctrl.Result, error) {
 	}
 
 	if len(r.reconcilerContext.OpenSearchConfig) > 0 {
+		// Enable hot reloading TLS certificates
+		r.reconcilerContext.AddConfig("plugins.security.ssl_cert_reload_enabled", "true")
 		// Use log4j instead of internal_opensearch for security audit logs
 		r.reconcilerContext.AddConfig("plugins.security.audit.type", "log4j")
 		r.reconcilerContext.AddConfig("plugins.security.audit.config.log4j.logger_name", "audit")
 		r.reconcilerContext.AddConfig("plugins.security.audit.config.log4j.level", "INFO")
+
 		r.reconcilerContext.AddConfig("plugins.security.enable_snapshot_restore_privilege", "true")
 		r.reconcilerContext.AddConfig("plugins.security.check_snapshot_restore_write_privileges", "true")
 		r.reconcilerContext.AddConfig("plugins.security.restapi.roles_enabled", `["all_access", "security_rest_api_access"]`)
