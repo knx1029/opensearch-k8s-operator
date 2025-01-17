@@ -62,7 +62,7 @@ var _ = Describe("Configuration Controller", func() {
 				},
 			}
 
-			reconcilerContext := NewReconcilerContext(&helpers.MockEventRecorder{}, &spec, spec.Spec.NodePools)
+			reconcilerContext := NewReconcilerContext(&helpers.MockEventRecorder{}, &spec, spec.Spec.NodePools, false)
 
 			underTest := newConfigurationReconciler(
 				mockClient,
@@ -108,7 +108,7 @@ var _ = Describe("Configuration Controller", func() {
 					return &ctrl.Result{}, nil
 				})
 
-			reconcilerContext := NewReconcilerContext(&helpers.MockEventRecorder{}, &spec, spec.Spec.NodePools)
+			reconcilerContext := NewReconcilerContext(&helpers.MockEventRecorder{}, &spec, spec.Spec.NodePools, false)
 
 			underTest := newConfigurationReconciler(
 				mockClient,
@@ -128,6 +128,60 @@ var _ = Describe("Configuration Controller", func() {
 			Expect(exists).To(BeTrue())
 			Expect(strings.Contains(data, "foo: bar\n")).To(BeTrue())
 			Expect(strings.Contains(data, "bar: baz\n")).To(BeTrue())
+		})
+	})
+
+	Context("When Reconciling the configuration controller with shouldEnforceTLS12", func() {
+		It("should ignore TLS config ", func() {
+			mockClient := k8s.NewMockK8sClient(GinkgoT())
+
+			spec := opsterv1.OpenSearchCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      clusterName,
+					Namespace: clusterName,
+					UID:       "dummyuid",
+				},
+				Spec: opsterv1.ClusterSpec{
+					General: opsterv1.GeneralConfig{},
+					NodePools: []opsterv1.NodePool{
+						{
+							Component: "test",
+							Roles: []string{
+								"master",
+								"data",
+							},
+						},
+					},
+				},
+			}
+
+			mockClient.EXPECT().Scheme().Return(scheme.Scheme)
+			mockClient.EXPECT().Context().Return(context.Background())
+			var createdConfigMap *corev1.ConfigMap
+			mockClient.On("CreateConfigMap", mock.Anything).
+				Return(func(cm *corev1.ConfigMap) (*ctrl.Result, error) {
+					createdConfigMap = cm
+					return &ctrl.Result{}, nil
+				})
+
+			reconcilerContext := NewReconcilerContext(&helpers.MockEventRecorder{}, &spec, spec.Spec.NodePools, true)
+
+			underTest := newConfigurationReconciler(
+				mockClient,
+				context.Background(),
+				&helpers.MockEventRecorder{},
+				&reconcilerContext,
+				&spec,
+			)
+			_, err := underTest.Reconcile()
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(createdConfigMap).ToNot(BeNil())
+
+			data, exists := createdConfigMap.Data["opensearch.yml"]
+			Expect(exists).To(BeTrue())
+			Expect(strings.Contains(data, "plugins.security.ssl.transport.enabled_protocols: [\"TLSv1.2\"]\n")).To(BeTrue())
+			Expect(strings.Contains(data, "plugins.security.ssl.http.enabled_protocols: [\"TLSv1.2\"]\n")).To(BeTrue())
 		})
 	})
 })

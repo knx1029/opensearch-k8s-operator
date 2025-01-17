@@ -67,20 +67,25 @@ type NodePoolHash struct {
 	ConfigHash string
 }
 
-func NewReconcilerContext(recorder record.EventRecorder, instance *opsterv1.OpenSearchCluster, nodepools []opsterv1.NodePool) ReconcilerContext {
+func NewReconcilerContext(recorder record.EventRecorder, instance *opsterv1.OpenSearchCluster, nodepools []opsterv1.NodePool, shouldEnforceTLS12 bool) ReconcilerContext {
 	var nodePoolHashes []NodePoolHash
 	for _, nodepool := range nodepools {
 		nodePoolHashes = append(nodePoolHashes, NodePoolHash{
 			Component: nodepool.Component,
 		})
 	}
-	return ReconcilerContext{
+	reconcilerContext := ReconcilerContext{
 		NodePoolHashes:   nodePoolHashes,
 		OpenSearchConfig: make(map[string]string),
 		DashboardsConfig: make(map[string]string),
 		recorder:         recorder,
 		instance:         instance,
 	}
+	if (shouldEnforceTLS12) {
+		reconcilerContext.AddConfig("plugins.security.ssl.transport.enabled_protocols", `["TLSv1.2"]`)
+		reconcilerContext.AddConfig("plugins.security.ssl.http.enabled_protocols", `["TLSv1.2"]`)
+	}
+	return reconcilerContext
 }
 
 func (c *ReconcilerContext) AddConfig(key string, value string) {
