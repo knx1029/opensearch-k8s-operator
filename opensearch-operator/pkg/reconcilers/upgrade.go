@@ -19,6 +19,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -296,7 +297,7 @@ func (r *UpgradeReconciler) doNodePoolUpgrade(pool opsterv1.NodePool) error {
 		r.logger.Info("Only 2 data nodes and drain is set, some shards may not drain")
 	}
 
-	if sts.Status.ReadyReplicas < lo.FromPtrOr(sts.Spec.Replicas, 1) {
+	if numReadyPods, err := helpers.CountRunningPodsForNodePool(r.client, r.instance, &pool); err == nil && numReadyPods < int(pointer.Int32Deref(sts.Spec.Replicas, 1)) {
 		r.logger.Info("Waiting for all pods to be ready")
 		conditions = append(conditions, "Waiting for all pods to be ready")
 		r.setComponentConditions(conditions, pool.Component)

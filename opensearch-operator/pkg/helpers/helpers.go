@@ -234,7 +234,11 @@ func DiffSlice(leftSlice, rightSlice []string) []string {
 }
 
 // Count the number of pods running and ready and not terminating for a given nodePool
+// We do not count in manager pods that are ready from <5mins ago
 func CountRunningPodsForNodePool(k8sClient k8s.K8sClient, cr *opsterv1.OpenSearchCluster, nodePool *opsterv1.NodePool) (int, error) {
+	shouldCheckReadyTimestamp := HasManagerRole(nodePool)
+	const POD_READY_TIME_MIN_DURATION_SECONDS int64 = 300
+	latestPodReadyTime := time.Now().Unix() - POD_READY_TIME_MIN_DURATION_SECONDS
 	// Constrict selector from labels
 	clusterReq, err := labels.NewRequirement(ClusterLabel, selection.Equals, []string{cr.ObjectMeta.Name})
 	if err != nil {
@@ -262,7 +266,21 @@ func CountRunningPodsForNodePool(k8sClient k8s.K8sClient, cr *opsterv1.OpenSearc
 				podReady = false
 			}
 		}
-		if podReady {
+		if !podReady {
+			continue
+		}
+		if !shouldCheckReadyTimestamp {
+			numReadyPods += 1
+			continue
+		}
+		// Check if the pod has been ready for a while
+		var podReadyTime int64 = -1
+		for _, condition:= range pod.Status.Conditions {
+			if condition.Type == "ContainersReady" && condition.Status == "True" {
+				podReadyTime = condition.LastTransitionTime.Unix()
+			}
+		}
+		if podReadyTime > 0 && podReadyTime <= latestPodReadyTime {
 			numReadyPods += 1
 		}
 	}
