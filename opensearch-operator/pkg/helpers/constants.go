@@ -10,6 +10,7 @@ const (
 	DashboardChecksumName        = "checksum/dashboards.yml"
 	ClusterLabel                 = "opster.io/opensearch-cluster"
 	NodePoolLabel                = "opster.io/opensearch-nodepool"
+	IsDiscoveryNodeLabel         = "opster.io/opensearch-discovery-node"
 	OsUserNameAnnotation         = "opensearchuser/name"
 	OsUserNamespaceAnnotation    = "opensearchuser/namespace"
 	DnsBaseEnvVariable           = "DNS_BASE"

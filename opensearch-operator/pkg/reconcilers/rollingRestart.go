@@ -3,6 +3,7 @@ package reconcilers
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	opsterv1 "github.com/Opster/opensearch-k8s-operator/opensearch-operator/api/v1"
@@ -74,7 +75,7 @@ func (r *RollingRestartReconciler) Reconcile() (ctrl.Result, error) {
 	}
 
 	status := r.findStatus()
-	var pendingUpdate bool
+	var pendingUpdate bool = false
 
 	// Check that all nodes are ready before doing work
 	// Also check if there are pending updates for all nodes.
@@ -86,7 +87,6 @@ func (r *RollingRestartReconciler) Reconcile() (ctrl.Result, error) {
 		if sts.Status.UpdateRevision != "" &&
 			sts.Status.UpdatedReplicas != pointer.Int32Deref(sts.Spec.Replicas, 1) {
 			pendingUpdate = true
-			break
 		} else if sts.Status.UpdateRevision != "" &&
 			sts.Status.CurrentRevision != sts.Status.UpdateRevision {
 			// If all pods in sts are updated to spec.replicas but current version is not updated.
@@ -149,15 +149,38 @@ func (r *RollingRestartReconciler) Reconcile() (ctrl.Result, error) {
 		return ctrl.Result{}, err
 	}
 
-	// Restart StatefulSet pod.  Order is not important So we just pick the first we find
-
+	// Restart StatefulSet pod
+	// 1. Update all pods in one nodepool to the latest version before restarting the next nodepool
+	// 2. Nodepool update order is data, then data+master and finally master (same order as upgrade)
+	var dataNodes, dataAndMasterNodes, otherNodes []opsterv1.NodePool
 	for _, nodePool := range r.instance.Spec.NodePools {
+		if helpers.HasDataRole(&nodePool) {
+			if helpers.HasManagerRole(&nodePool) {
+				dataAndMasterNodes = append(dataAndMasterNodes, nodePool)
+			} else {
+				dataNodes = append(dataNodes, nodePool)
+			}
+		} else {
+			otherNodes = append(otherNodes, nodePool)
+		}
+	}
+	sort.Slice(dataAndMasterNodes, func(i, j int) bool {
+		return dataAndMasterNodes[i].Component < dataAndMasterNodes[j].Component
+	})
+	sort.Slice(otherNodes, func(i, j int) bool {
+		return otherNodes[i].Component < otherNodes[j].Component
+	})
+	var sortedNodePools []opsterv1.NodePool = append(dataNodes, dataAndMasterNodes...)
+	sortedNodePools = append(sortedNodePools, otherNodes...)
+
+	for _, nodePool := range sortedNodePools {
 		sts, err := r.client.GetStatefulSet(builders.StsName(r.instance, &nodePool), r.instance.Namespace)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
 		if sts.Status.UpdateRevision != "" &&
 			sts.Status.UpdatedReplicas != pointer.Int32Deref(sts.Spec.Replicas, 1) {
+			lg.Info(fmt.Sprintf("Updating all replicas in StatefulSet %s to latest version", sts.Name))
 			// Only restart pods if not all pods are updated and the sts is healthy with no pods terminating
 			if sts.Status.ReadyReplicas == pointer.Int32Deref(sts.Spec.Replicas, 1) {
 				if numReadyPods, err := helpers.CountRunningPodsForNodePool(r.client, r.instance, &nodePool); err == nil && numReadyPods == int(pointer.Int32Deref(sts.Spec.Replicas, 1)) {
@@ -170,6 +193,8 @@ func (r *RollingRestartReconciler) Reconcile() (ctrl.Result, error) {
 					return ctrl.Result{}, err
 				}
 			}
+			// break early to stop working on other nodepools as the current nodepool is not fully updated yet
+			break
 		}
 	}
 

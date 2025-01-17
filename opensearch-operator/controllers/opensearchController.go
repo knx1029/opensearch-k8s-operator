@@ -55,6 +55,10 @@ type OpenSearchClusterReconciler struct {
 	SecurityAdminWaitSeconds int
 	// Clusters with more than this number of nodes will enforce TLS 1.2 only
 	MinClusterSizeToEnforceTLS12Only int
+	// If true, the reconciler will recreate existing data StatefulSet with OrderReadyPodManagementPolicy to ParallelPocManagementPolicy
+	UpdateStsToParallelPodMgmt bool
+	// If true, the reconciler will update discovery service labels to include `opster.io/opensearch-discovery-node: "true"`
+	UpdateDiscoveryServiceLabel bool
 }
 
 // Return whether we should perform a rolling restart on the given OpenSearchCluster
@@ -221,6 +225,8 @@ func (r *OpenSearchClusterReconciler) deleteExternalResources(ctx context.Contex
 		r.Recorder,
 		&reconcilerContext,
 		instance,
+		r.UpdateStsToParallelPodMgmt,
+		r.UpdateDiscoveryServiceLabel,
 	)
 	dashboards := reconcilers.NewDashboardsReconciler(
 		r.Client,
@@ -307,6 +313,8 @@ func (r *OpenSearchClusterReconciler) reconcilePhaseRunning(ctx context.Context,
 		r.Recorder,
 		&reconcilerContext,
 		instance,
+		r.UpdateStsToParallelPodMgmt,
+		r.UpdateDiscoveryServiceLabel,
 	)
 	scaler := reconcilers.NewScalerReconciler(
 		r.Client,

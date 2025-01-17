@@ -71,12 +71,16 @@ func main() {
 	// This config controls the minimum OpenSearchCluster size to enforce TLS 1.2 only.
 	// Set the value to MAX to remove the config, or to 0 to enforce TLS 1.2 only for all clusters.
 	var minClusterSizeToEnforceTLS12Only int
+	var updateStsToParallelPodMgmt bool
+	var updateDiscoveryServiceLabel bool
 	flag.IntVar(&securityAdminWaitSeconds, "security-admin-wait-seconds", 120, "Wait time after the security admin configuration is applied.")
 	flag.IntVar(&maxConcurrentReconciles, "max-concurrent-reconciles", 16, "Max concurrent reconciles for OpenSearch controller.")
 	flag.IntVar(&rollingRestartPercentage, "rolling-restart-percentage", 100, "The percentage of OpenSearchClusters that OpenSearch controller will perform RollingRestart. This is used to rollout new OpenSearch operator gradually.")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.IntVar(&minClusterSizeToEnforceTLS12Only, "min-cluster-size-to-enforce-tls12-only", 1024, "The minimum OpenSearchCluster size (all nodepools) to enforce TLS 1.2 only.")
+	flag.BoolVar(&updateStsToParallelPodMgmt, "update-sts-to-parallel-pod-mgmt", false, "Update StatefulSet from OrderedReady to Parallel. This is only used when we rely on operators to migrate the data nodepool to ParallelPodManagementPolicy.")
+	flag.BoolVar(&updateDiscoveryServiceLabel, "update-discovery-service-label", false, "Update discovery-service label to have `opster.io/opensearch-discovery-node: true` for all discovery nodes. Set this to true after we backfill all existing master nodepools.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
@@ -135,6 +139,8 @@ func main() {
 		RollingRestartPercentage: rollingRestartPercentage,
 		SecurityAdminWaitSeconds: securityAdminWaitSeconds,
 		MinClusterSizeToEnforceTLS12Only: minClusterSizeToEnforceTLS12Only,
+		UpdateStsToParallelPodMgmt: updateStsToParallelPodMgmt,
+		UpdateDiscoveryServiceLabel: updateDiscoveryServiceLabel,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "OpenSearchCluster")
 		os.Exit(1)

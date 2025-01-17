@@ -386,6 +386,14 @@ func HasManagerRole(nodePool *opsterv1.NodePool) bool {
 	return ContainsString(nodePool.Roles, "master") || ContainsString(nodePool.Roles, "cluster_manager")
 }
 
+func IsDataRoleOnly(nodePool *opsterv1.NodePool) bool {
+	return HasDataRole(nodePool) && !HasManagerRole(nodePool)
+}
+
+func IsManagerRoleOnly(nodePool *opsterv1.NodePool) bool {
+	return HasManagerRole(nodePool) && !HasDataRole(nodePool)
+}
+
 func RemoveDuplicateStrings(strSlice []string) []string {
 	allKeys := make(map[string]bool)
 	list := []string{}

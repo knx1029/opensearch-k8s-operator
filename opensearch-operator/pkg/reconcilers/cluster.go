@@ -32,6 +32,8 @@ type ClusterReconciler struct {
 	reconcilerContext *ReconcilerContext
 	instance          *opsterv1.OpenSearchCluster
 	logger            logr.Logger
+	updateStsToParallelPodMgmt bool
+	updateDiscoveryServiceLabel bool
 }
 
 func NewClusterReconciler(
@@ -40,6 +42,8 @@ func NewClusterReconciler(
 	recorder record.EventRecorder,
 	reconcilerContext *ReconcilerContext,
 	instance *opsterv1.OpenSearchCluster,
+	updateStsToParallelPodMgmt bool,
+	updateDiscoveryServiceLabel bool,
 	opts ...reconciler.ResourceReconcilerOption,
 ) *ClusterReconciler {
 	return &ClusterReconciler{
@@ -53,6 +57,8 @@ func NewClusterReconciler(
 		reconcilerContext: reconcilerContext,
 		instance:          instance,
 		logger:            log.FromContext(ctx),
+		updateStsToParallelPodMgmt: updateStsToParallelPodMgmt,
+		updateDiscoveryServiceLabel: updateDiscoveryServiceLabel,
 	}
 }
 
@@ -87,7 +93,7 @@ func (r *ClusterReconciler) Reconcile() (ctrl.Result, error) {
 	result.CombineErr(ctrl.SetControllerReference(r.instance, clusterService, r.client.Scheme()))
 	result.Combine(r.client.ReconcileResource(clusterService, reconciler.StatePresent))
 
-	discoveryService := builders.NewDiscoveryServiceForCR(r.instance)
+	discoveryService := builders.NewDiscoveryServiceForCR(r.instance, r.updateDiscoveryServiceLabel)
 	result.CombineErr(ctrl.SetControllerReference(r.instance, discoveryService, r.client.Scheme()))
 	result.Combine(r.client.ReconcileResource(discoveryService, reconciler.StatePresent))
 
@@ -183,6 +189,8 @@ func (r *ClusterReconciler) reconcileNodeStatefulSet(nodePool opsterv1.NodePool,
 
 	// Detect cluster failure and initiate parallel recovery
 	if helpers.ParallelRecoveryMode() &&
+	    // Parallel recovery is only needed when the desired PodManagementPolicy is OrderedReady
+	    (sts.Spec.PodManagementPolicy == appsv1.OrderedReadyPodManagement) &&
 		(nodePool.Persistence == nil || nodePool.Persistence.PersistenceSource.PVC != nil) {
 		// This logic only works if the STS uses PVCs
 		// First check if the STS already has a readable status (CurrentRevision == "" indicates the STS is newly created and the controller has not yet updated the status properly)
@@ -234,6 +242,21 @@ func (r *ClusterReconciler) reconcileNodeStatefulSet(nodePool opsterv1.NodePool,
 				// STS will be recreated by the normal code below
 			}
 		}
+	}
+
+	if (sts.Spec.PodManagementPolicy == appsv1.ParallelPodManagement && existing.Spec.PodManagementPolicy == appsv1.OrderedReadyPodManagement) {
+		if (r.updateStsToParallelPodMgmt) {
+			// If `updateStsToParallelPodMgmt` is true, then delete the current STS and new STS will be recreated
+			// in the next reconciliation
+			r.logger.Info(fmt.Sprintf("Delete STS for %s to switch from OrderedReady to Parallel", nodePool.Component))
+			if err := helpers.WaitForSTSDelete(r.client, &existing); err != nil {
+				r.logger.Error(err, "Failed to delete STS")
+				return result, err
+			}
+		} else {
+			// If `updateStsToParallelPodMgmt` is false, then we need to respect the current STS PodManagementPolicy
+			sts.Spec.PodManagementPolicy = appsv1.OrderedReadyPodManagement
+	    }
 	}
 
 	// Handle PodDisruptionBudget

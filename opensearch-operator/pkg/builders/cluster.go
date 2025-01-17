@@ -126,9 +126,18 @@ func NewSTSForNodePool(
 		MountPath: "/usr/share/opensearch/data",
 	})
 
-	labels := map[string]string{
-		helpers.ClusterLabel:  cr.Name,
-		helpers.NodePoolLabel: node.Component,
+	var labels map[string]string
+	if (helpers.HasManagerRole(&node)) {
+		labels = map[string]string{
+				helpers.ClusterLabel:  cr.Name,
+				helpers.NodePoolLabel: node.Component,
+				helpers.IsDiscoveryNodeLabel: "true",
+		}
+	} else {
+		labels = map[string]string{
+				helpers.ClusterLabel:  cr.Name,
+				helpers.NodePoolLabel: node.Component,
+		}
 	}
 	annotations := map[string]string{
 		ConfigurationChecksumAnnotation: configChecksum,
@@ -443,6 +452,13 @@ func NewSTSForNodePool(
 		initContainers = append(initContainers, keystoreInitContainer)
 	}
 
+	var podMgmtPolicy appsv1.PodManagementPolicyType;
+	if (helpers.IsDataRoleOnly(&node)) {
+		podMgmtPolicy = appsv1.ParallelPodManagement
+	} else {
+		podMgmtPolicy = appsv1.OrderedReadyPodManagement
+	}
+
 	sts := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        cr.Name + "-" + node.Component,
@@ -455,7 +471,7 @@ func NewSTSForNodePool(
 			Selector: &metav1.LabelSelector{
 				MatchLabels: matchLabels,
 			},
-			PodManagementPolicy: appsv1.OrderedReadyPodManagement,
+			PodManagementPolicy: podMgmtPolicy,
 			UpdateStrategy: appsv1.StatefulSetUpdateStrategy{
 				Type: appsv1.OnDeleteStatefulSetStrategyType,
 			},
@@ -692,9 +708,17 @@ func NewServiceForCR(cr *opsterv1.OpenSearchCluster) *corev1.Service {
 	}
 }
 
-func NewDiscoveryServiceForCR(cr *opsterv1.OpenSearchCluster) *corev1.Service {
-	labels := map[string]string{
-		helpers.ClusterLabel: cr.Name,
+func NewDiscoveryServiceForCR(cr *opsterv1.OpenSearchCluster, updateDiscoveryServiceLabel bool) *corev1.Service {
+	var labels map[string]string
+	if (updateDiscoveryServiceLabel) {
+		labels = map[string]string{
+			helpers.ClusterLabel: cr.Name,
+			helpers.IsDiscoveryNodeLabel: "true",
+		}
+	} else {
+		labels = map[string]string{
+			helpers.ClusterLabel: cr.Name,
+		}
 	}
 
 	return &corev1.Service{
@@ -761,6 +785,7 @@ func NewBootstrapPod(
 ) *corev1.Pod {
 	labels := map[string]string{
 		helpers.ClusterLabel: cr.Name,
+		helpers.IsDiscoveryNodeLabel: "true",
 	}
 	resources := cr.Spec.Bootstrap.Resources
 
