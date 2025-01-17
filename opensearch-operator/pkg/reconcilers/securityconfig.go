@@ -135,7 +135,7 @@ func (r *SecurityconfigReconciler) Reconcile() (ctrl.Result, error) {
 		if err := r.securityconfigSubpaths(r.instance, &configSecret); err != nil {
 			return ctrl.Result{}, err
 		}
-		cmdArg = BuildCmdArg(r.instance, &configSecret, r.logger)
+		cmdArg = BuildCmdArg(r.instance, &configSecret, r.securityAdminWaitSeconds, r.logger)
 	} else {
 		r.logger.Info("Not passed any SecurityconfigSecret")
 	}
@@ -188,11 +188,11 @@ func (r *SecurityconfigReconciler) Reconcile() (ctrl.Result, error) {
 
 // BuildCmdArg builds the command for the securityconfig-update job for each individual ymls present in the
 // securityconfig secret. yml files which are not present in the secret are not applied/updated
-func BuildCmdArg(instance *opsterv1.OpenSearchCluster, secret *corev1.Secret, log logr.Logger) string {
+func BuildCmdArg(instance *opsterv1.OpenSearchCluster, secret *corev1.Secret, securityAdminWaitSeconds int, log logr.Logger) string {
 	clusterHostName := BuildClusterSvcHostName(instance)
 	httpPort, securityConfigPort, securityconfigPath := helpers.VersionCheck(instance)
 
-	arg := fmt.Sprintf(SecurityAdminBaseCmdTmpl, clusterHostName, httpPort)
+	arg := fmt.Sprintf(SecurityAdminBaseCmdTmpl, clusterHostName, httpPort, securityAdminWaitSeconds)
 
 	// Get the list of yml files and sort them
 	// This will ensure commands are always generated in the same order
