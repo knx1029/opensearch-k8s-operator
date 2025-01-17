@@ -33,7 +33,7 @@ const (
 chmod +x $ADMIN;
 until curl -k --silent https://%s:%v;
 do
-echo 'Waiting to connect to the cluster'; sleep 120;
+echo 'Waiting to connect to the cluster'; sleep %v;
 done;`
 
 	ApplyAllYmlCmdTmpl = `count=0;
@@ -68,6 +68,7 @@ type SecurityconfigReconciler struct {
 	reconcilerContext *ReconcilerContext
 	instance          *opsterv1.OpenSearchCluster
 	logger            logr.Logger
+	securityAdminWaitSeconds int
 }
 
 func NewSecurityconfigReconciler(
@@ -76,6 +77,7 @@ func NewSecurityconfigReconciler(
 	recorder record.EventRecorder,
 	reconcilerContext *ReconcilerContext,
 	instance *opsterv1.OpenSearchCluster,
+	securityAdminWaitSeconds int,
 	opts ...reconciler.ResourceReconcilerOption,
 ) *SecurityconfigReconciler {
 	return &SecurityconfigReconciler{
@@ -84,6 +86,7 @@ func NewSecurityconfigReconciler(
 		recorder:          recorder,
 		instance:          instance,
 		logger:            log.FromContext(ctx),
+		securityAdminWaitSeconds: securityAdminWaitSeconds,
 	}
 }
 
@@ -157,7 +160,7 @@ func (r *SecurityconfigReconciler) Reconcile() (ctrl.Result, error) {
 	if !r.instance.Status.Initialized || len(cmdArg) == 0 {
 		clusterHostName := BuildClusterSvcHostName(r.instance)
 		httpPort, securityConfigPort, securityconfigPath := helpers.VersionCheck(r.instance)
-		cmdArg = fmt.Sprintf(SecurityAdminBaseCmdTmpl, clusterHostName, httpPort) +
+		cmdArg = fmt.Sprintf(SecurityAdminBaseCmdTmpl, clusterHostName, httpPort, r.securityAdminWaitSeconds) +
 			fmt.Sprintf(ApplyAllYmlCmdTmpl, caCert, adminCert, adminKey, securityconfigPath, clusterHostName, securityConfigPort)
 	}
 

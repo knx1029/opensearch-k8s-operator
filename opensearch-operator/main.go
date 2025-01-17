@@ -60,6 +60,12 @@ func main() {
 	var probeAddr string
 	var watchNamespace string
 	var logLevel string
+	var maxConcurrentReconciles int
+	var rollingRestartPercentage int
+	var securityAdminWaitSeconds int
+	flag.IntVar(&securityAdminWaitSeconds, "security-admin-wait-seconds", 120, "Wait time after the security admin configuration is applied.")
+	flag.IntVar(&maxConcurrentReconciles, "max-concurrent-reconciles", 16, "Max concurrent reconciles for OpenSearch controller.")
+	flag.IntVar(&rollingRestartPercentage, "rolling-restart-percentage", 100, "The percentage of OpenSearchClusters that OpenSearch controller will perform RollingRestart. This is used to rollout new OpenSearch operator gradually.")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
@@ -116,6 +122,9 @@ func main() {
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
 		Recorder: mgr.GetEventRecorderFor("containerset-controller"),
+		MaxConcurrentReconciles: maxConcurrentReconciles,
+		RollingRestartPercentage: rollingRestartPercentage,
+		SecurityAdminWaitSeconds: securityAdminWaitSeconds,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "OpenSearchCluster")
 		os.Exit(1)
